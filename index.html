@@ -101,30 +101,6 @@
     const CACHE_KEY = 'manga-cache';
     const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-    // Function to hide loader and show main app
-    function showMainApp() {
-      loader.style.display = 'none';
-      mainApp.style.display = 'block';
-      displayFavorites();
-      displayBookmarks();
-      fetchTrending();
-    }
-
-    // Loading Screen for 1 second
-    window.addEventListener('load', () => {
-      setTimeout(showMainApp, 1000);
-    });
-
-    // Fallback to ensure main app shows
-    setTimeout(showMainApp, 1500);
-
-    // Theme Toggle
-    document.getElementById('toggleTheme').addEventListener('click', () => {
-      document.documentElement.classList.toggle('dark');
-      const isDark = document.documentElement.classList.contains('dark');
-      document.getElementById('toggleTheme').textContent = isDark ? '🌞 Light Mode' : '🌙 Dark Mode';
-    });
-
     // Cache Utility
     function getCachedData(key) {
       const cached = localStorage.getItem(key);
@@ -141,20 +117,18 @@
       localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
     }
 
-    // Fetch Trending Manga with Infinite Scroll
+    // Fetch Trending Manga
     async function fetchTrending(page = 1) {
       if (isLoading) return;
       isLoading = true;
-      document.getElementById('loadingMore').classList.remove('hidden');
-      const genre = document.getElementById('genreFilter').value;
-      const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+      const genre = document.getElementById('genreFilter')?.value || 'all';
+      const searchQuery = document.getElementById('searchInput')?.value.toLowerCase() || '';
       const cacheKey = `${CACHE_KEY}-${page}-${genre}-${searchQuery}`;
       let data = getCachedData(cacheKey);
 
       if (data) {
         renderManga(data, page);
         isLoading = false;
-        document.getElementById('loadingMore').classList.add('hidden');
         return;
       }
 
@@ -178,7 +152,7 @@
         document.getElementById('mangaList').innerHTML = '<p class="text-center col-span-full text-red-500">Failed to load manga. Try again later.</p>';
       } finally {
         isLoading = false;
-        document.getElementById('loadingMore').classList.add('hidden');
+        document.getElementById('loadingMore')?.classList.add('hidden');
       }
     }
 
@@ -191,7 +165,7 @@
         return;
       }
 
-      const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+      const searchQuery = document.getElementById('searchInput')?.value.toLowerCase() || '';
       data.data.forEach(manga => {
         if (searchQuery && !manga.attributes.title.en.toLowerCase().includes(searchQuery)) return;
         const cover = manga.relationships.find(r => r.type === 'cover_art');
@@ -210,8 +184,29 @@
       currentPage = page;
     }
 
-    // Initial fetch
-    fetchTrending();
+    // Preload data during loading screen
+    window.addEventListener('load', () => {
+      fetchTrending(); // Start fetching trending manga immediately
+      setTimeout(showMainApp, 3000); // Show main app after 3 seconds
+    });
+
+    // Fallback to ensure main app shows
+    setTimeout(showMainApp, 4500); // Fallback after 4.5 seconds
+
+    // Function to hide loader and show main app
+    function showMainApp() {
+      loader.style.display = 'none';
+      mainApp.style.display = 'block';
+      displayFavorites();
+      displayBookmarks();
+    }
+
+    // Theme Toggle
+    document.getElementById('toggleTheme').addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('toggleTheme').textContent = isDark ? '🌞 Light Mode' : '🌙 Dark Mode';
+    });
 
     // Infinite Scroll
     window.addEventListener('scroll', () => {
