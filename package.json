@@ -1,0 +1,9 @@
+{
+  "name": "manga-movie-app",
+  "version": "1.0.0",
+  "description": "Manga and Movie Streaming App",
+  "scripts": {
+    "start": "npx serve ."
+  },
+  "dependencies": {}
+}
