@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StreamMe Manga</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            glitch: ['"Orbitron"', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-black text-white">
+  <!-- Glitchy Loading Screen -->
+  <div id="loader" class="fixed inset-0 flex items-center justify-center bg-black z-50">
+    <h1 class="text-5xl font-glitch animate-pulse text-purple-500">StreamMe Manga</h1>
+  </div>
+
+  <!-- Main App -->
+  <div class="min-h-screen p-4" id="mainApp" style="display:none">
+    <!-- Header with Search, Theme Toggle, and Movie Link -->
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+      <h1 class="text-3xl font-bold">📈 Trending Manga</h1>
+      <div class="flex items-center gap-4">
+        <input id="searchInput" type="text" placeholder="Search manga..." class="bg-gray-800 text-white px-3 py-1 rounded w-full sm:w-64">
+        <select id="genreFilter" class="bg-gray-800 text-white px-3 py-1 rounded">
+          <option value="all">All Genres</option>
+          <option value="Action">Action</option>
+          <option value="Romance">Romance</option>
+          <option value="Fantasy">Fantasy</option>
+          <option value="Shonen">Shonen</option>
+          <option value="Seinen">Seinen</option>
+        </select>
+        <button id="toggleTheme" class="bg-gray-800 text-white px-3 py-1 rounded">🌓 Toggle Theme</button>
+        <a href="/movie.html" class="text-blue-400 hover:underline">Go to Movies</a>
+      </div>
+    </div>
+
+    <!-- Favorites Section -->
+    <div id="favoritesSection" class="mb-4 hidden">
+      <h2 class="text-2xl font-bold mb-2">⭐ Your Favorites</h2>
+      <div id="favoritesList" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+    </div>
+
+    <!-- Trending Manga List -->
+    <div id="mangaList" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+    <div id="loadingMore" class="text-center mt-4 hidden">Loading more...</div>
+
+    <!-- Manga Detail Modal -->
+    <div id="mangaModal" class="fixed inset-0 bg-black bg-opacity-90 z-50 overflow-y-auto hidden">
+      <div class="max-w-2xl mx-auto p-4">
+        <button onclick="closeModal()" class="mb-4 text-white bg-red-600 px-4 py-1 rounded">Close</button>
+        <div id="mangaDetail" class="space-y-4"></div>
+        <div class="flex gap-4 items-center">
+          <label for="chapterSelect">📘 Select Chapter:</label>
+          <select id="chapterSelect" class="bg-gray-800 text-white px-2 py-1 rounded"></select>
+          <button onclick="readChapter()" class="bg-blue-600 px-3 py-1 rounded">Read Manga</button>
+          <button id="favoriteButton" class="bg-yellow-600 px-3 py-1 rounded">⭐ Add to Favorites</button>
+          <button onclick="shareManga()" class="bg-green-600 px-3 py-1 rounded">🔗 Share</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reader View -->
+    <div id="readerView" class="fixed inset-0 bg-black z-50 overflow-y-auto hidden">
+      <div class="max-w-4xl mx-auto p-4">
+        <div class="flex justify-between items-center mb-4">
+          <button onclick="closeReader()" class="text-white bg-red-600 px-4 py-1 rounded">Close Reader</button>
+          <button id="fullscreenButton" class="text-white bg-blue-600 px-4 py-1 rounded">🖥️ Fullscreen</button>
+        </div>
+        <div id="chapterImages" class="space-y-4"></div>
+        <div class="flex items-center gap-4 mt-4">
+          <select id="readerChapterSelect" class="bg-gray-800 text-white px-2 py-1 rounded"></select>
+          <button onclick="nextChapter()" class="bg-green-600 px-3 py-1 rounded">Next Chapter ➡️</button>
+          <button onclick="saveBookmark()" class="bg-purple-600 px-3 py-1 rounded">💾 Bookmark</button>
+        </div>
+        <div id="bookmarkList" class="mt-4 hidden">
+          <h3 class="text-lg font-bold">📚 Bookmarks</h3>
+          <ul id="bookmarkItems" class="list-disc pl-5"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const loader = document.getElementById('loader');
+    const mainApp = document.getElementById('mainApp');
+    let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+    let bookmarks = JSON.parse(localStorage.getItem('bookmarks')) || [];
+    let currentPage = 1;
+    let isLoading = false;
+
+    // Function to hide loader and show main app
+    function showMainApp() {
+      loader.style.display = 'none';
+      mainApp.style.display = 'block';
+      displayFavorites();
+      displayBookmarks();
+      fetchTrending();
+    }
+
+    // Loading Screen for 1 second
+    window.addEventListener('load', () => {
+      setTimeout(showMainApp, 1000);
+    });
+
+    // Fallback to ensure main app shows
+    setTimeout(showMainApp, 1500);
+
+    // Theme Toggle
+    document.getElementById('toggleTheme').addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('toggleTheme').textContent = isDark ? '🌞 Light Mode' : '🌙 Dark Mode';
+    });
+
+    // Fetch Trending Manga with Infinite Scroll
+    async function fetchTrending(page = 1) {
+      if (isLoading) return;
+      isLoading = true;
+      document.getElementById('loadingMore').classList.remove('hidden');
+      const genre = document.getElementById('genreFilter').value;
+      const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+      let url = `https://api.mangadex.org/manga?limit=20&offset=${(page - 1) * 20}&order[followedCount]=desc&includes[]=cover_art`;
+      if (genre !== 'all') url += `&contentRating[]=safe&contentRating[]=suggestive&tags[]=${genre.toLowerCase()}`;
+      
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        const data = await res.json();
+        const list = document.getElementById('mangaList');
+        if (page === 1) list.innerHTML = '';
+
+        if (!data.data || data.data.length === 0) {
+          list.innerHTML = '<p class="text-center col-span-full">No manga found.</p>';
+          isLoading = false;
+          document.getElementById('loadingMore').classList.add('hidden');
+          return;
+        }
+
+        data.data.forEach(manga => {
+          if (searchQuery && !manga.attributes.title.en.toLowerCase().includes(searchQuery)) return;
+          const cover = manga.relationships.find(r => r.type === 'cover_art');
+          const fileName = cover?.attributes?.fileName;
+          const imgUrl = fileName ? `https://uploads.mangadex.org/covers/${manga.id}/${fileName}.256.jpg` : 'https://via.placeholder.com/150';
+          const card = document.createElement('div');
+          card.className = 'bg-gray-900 p-2 rounded hover:scale-105 transition';
+          card.innerHTML = `
+            <img src="${imgUrl}" alt="cover" class="rounded w-full h-48 object-cover">
+            <h2 class="mt-2 text-sm font-semibold">${manga.attributes.title.en || 'No Title'}</h2>
+            <button class="mt-2 bg-blue-600 text-white px-2 py-1 rounded w-full" onclick="openManga('${manga.id}')">View</button>
+          `;
+          list.appendChild(card);
+        });
+
+        isLoading = false;
+        document.getElementById('loadingMore').classList.add('hidden');
+        currentPage = page;
+      } catch (error) {
+        console.error('Error fetching trending manga:', error);
+        document.getElementById('mangaList').innerHTML = '<p class="text-center col-span-full text-red-500">Failed to load manga. Please try again later.</p>';
+        isLoading = false;
+        document.getElementById('loadingMore').classList.add('hidden');
+      }
+    }
+
+    // Initial fetch
+    fetchTrending();
+
+    // Infinite Scroll
+    window.addEventListener('scroll', () => {
+      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 100 && !isLoading) {
+        fetchTrending(currentPage + 1);
+      }
+    });
+
+    // Search Bar
+    document.getElementById('searchInput').addEventListener('input', debounce(() => {
+      currentPage = 1;
+      fetchTrending();
+    }, 300));
+
+    // Genre Filter
+    document.getElementById('genreFilter').addEventListener('change', () => {
+      currentPage = 1;
+      fetchTrending();
+    });
+
+    // Open Manga Modal
+    async function openManga(id) {
+      const modal = document.getElementById('mangaModal');
+      const detail = document.getElementById('mangaDetail');
+      const select = document.getElementById('chapterSelect');
+      const readerSelect = document.getElementById('readerChapterSelect');
+      const favoriteButton = document.getElementById('favoriteButton');
+      modal.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`https://api.mangadex.org/manga/${id}?includes[]=cover_art&includes[]=author`);
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        const manga = await res.json();
+
+        const chapRes = await fetch(`https://api.mangadex.org/chapter?manga=${id}&translatedLanguage[]=en&order[chapter]=asc&limit=100`);
+        if (!chapRes.ok) throw new Error(`Chapter API error: ${chapRes.status}`);
+        const chapData = await chapRes.json();
+        const chapters = chapData.data;
+
+        const cover = manga.data.relationships.find(r => r.type === 'cover_art');
+        const imgUrl = cover?.attributes?.fileName ? `https://uploads.mangadex.org/covers/${manga.data.id}/${cover.attributes.fileName}` : 'https://via.placeholder.com/150';
+        detail.innerHTML = `
+          <img src="${imgUrl}" class="w-full h-64 object-cover rounded">
+          <h2 class="text-2xl font-bold">${manga.data.attributes.title.en}</h2>
+          <p>${manga.data.attributes.description.en || 'No description available'}</p>
+        `;
+
+        select.innerHTML = readerSelect.innerHTML = '';
+        chapters.forEach((c, i) => {
+          const option = document.createElement('option');
+          option.value = c.id;
+          option.innerText = `Chapter ${c.attributes.chapter || i + 1}`;
+          select.appendChild(option.cloneNode(true));
+          readerSelect.appendChild(option);
+        });
+
+        select.dataset.manga = id;
+        readerSelect.dataset.manga = id;
+        favoriteButton.textContent = favorites.includes(id) ? '⭐ Remove from Favorites' : '⭐ Add to Favorites';
+        favoriteButton.onclick = () => toggleFavorite(id, manga.data.attributes.title.en, imgUrl);
+      } catch (error) {
+        console.error('Error opening manga:', error);
+        detail.innerHTML = '<p class="text-red-500">Failed to load manga details.</p>';
+      }
+    }
+
+    // Close Modal
+    function closeModal() {
+      document.getElementById('mangaModal').classList.add('hidden');
+    }
+
+    // Favorites System
+    function toggleFavorite(id, title, imgUrl) {
+      const favoriteButton = document.getElementById('favoriteButton');
+      if (favorites.includes(id)) {
+        favorites = favorites.filter(fav => fav !== id);
+        favoriteButton.textContent = '⭐ Add to Favorites';
+      } else {
+        favorites.push(id);
+        favoriteButton.textContent = '⭐ Remove from Favorites';
+      }
+      localStorage.setItem('favorites', JSON.stringify(favorites));
+      displayFavorites();
+    }
+
+    function displayFavorites() {
+      const favoritesSection = document.getElementById('favoritesSection');
+      const favoritesList = document.getElementById('favoritesList');
+      if (favorites.length === 0) {
+        favoritesSection.classList.add('hidden');
+        return;
+      }
+      favoritesSection.classList.remove('hidden');
+      favoritesList.innerHTML = '';
+      favorites.forEach(async id => {
+        try {
+          const res = await fetch(`https://api.mangadex.org/manga/${id}?includes[]=cover_art`);
+          if (!res.ok) throw new Error(`API error: ${res.status}`);
+          const manga = await res.json();
+          const cover = manga.data.relationships.find(r => r.type === 'cover_art');
+          const imgUrl = cover?.attributes?.fileName ? `https://uploads.mangadex.org/covers/${manga.data.id}/${cover.attributes.fileName}.256.jpg` : 'https://via.placeholder.com/150';
+          const card = document.createElement('div');
+          card.className = 'bg-gray-900 p-2 rounded hover:scale-105 transition';
+          card.innerHTML = `
+            <img src="${imgUrl}" alt="cover" class="rounded w-full h-48 object-cover">
+            <h2 class="mt-2 text-sm font-semibold">${manga.data.attributes.title.en || 'No Title'}</h2>
+            <button class="mt-2 bg-blue-600 text-white px-2 py-1 rounded w-full" onclick="openManga('${manga.data.id}')">View</button>
+            <button class="mt-2 bg-red-600 text-white px-2 py-1 rounded w-full" onclick="toggleFavorite('${manga.data.id}')">Remove</button>
+          `;
+          favoritesList.appendChild(card);
+        } catch (error) {
+          console.error('Error displaying favorite:', error);
+        }
+      });
+    }
+
+    // Social Media Sharing
+    function shareManga() {
+      const title = document.querySelector('#mangaDetail h2').textContent;
+      const url = window.location.href;
+      if (navigator.share) {
+        navigator.share({
+          title: `Check out ${title} on StreamMe Manga!`,
+          url: url
+        }).catch(console.error);
+      } else {
+        alert(`Share this manga: ${title} - ${url}`);
+      }
+    }
+
+    // Read Chapter
+    function readChapter() {
+      const reader = document.getElementById('readerView');
+      const select = document.getElementById('chapterSelect');
+      loadChapter(select.value);
+      reader.dataset.current = select.selectedIndex;
+      reader.classList.remove('hidden');
+    }
+
+    // Close Reader
+    function closeReader() {
+      document.getElementById('readerView').classList.add('hidden');
+      if (document.fullscreenElement) document.exitFullscreen();
+    }
+
+    // Load Chapter
+    async function loadChapter(id) {
+      try {
+        const res = await fetch(`https://api.mangadex.org/at-home/server/${id}`);
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        const { baseUrl, chapter } = await res.json();
+        const container = document.getElementById('chapterImages');
+        container.innerHTML = '';
+        chapter.data.forEach(img => {
+          const image = document.createElement('img');
+          image.src = `${baseUrl}/data/${chapter.hash}/${img}`;
+          image.className = 'w-full rounded mx-auto';
+          container.appendChild(image);
+        });
+      } catch (error) {
+        console.error('Error loading chapter:', error);
+        document.getElementById('chapterImages').innerHTML = '<p class="text-red-500">Failed to load chapter.</p>';
+      }
+    }
+
+    // Next Chapter
+    function nextChapter() {
+      const readerSelect = document.getElementById('readerChapterSelect');
+      const currentIndex = readerSelect.selectedIndex;
+      if (currentIndex + 1 < readerSelect.options.length) {
+        readerSelect.selectedIndex = currentIndex + 1;
+        loadChapter(readerSelect.value);
+      }
+    }
+
+    // Fullscreen Reader
+    document.getElementById('fullscreenButton').addEventListener('click', () => {
+      const reader = document.getElementById('readerView');
+      if (!document.fullscreenElement) {
+        reader.requestFullscreen().catch(console.error);
+        document.getElementById('fullscreenButton').textContent = 'Exit Fullscreen';
+      } else {
+        document.exitFullscreen();
+        document.getElementById('fullscreenButton').textContent = '🖥️ Fullscreen';
+      }
+    });
+
+    // Bookmarks System
+    function saveBookmark() {
+      const readerSelect = document.getElementById('readerChapterSelect');
+      const mangaId = readerSelect.dataset.manga;
+      const chapterId = readerSelect.value;
+      const chapterTitle = readerSelect.options[readerSelect.selectedIndex].text;
+      bookmarks.push({ mangaId, chapterId, chapterTitle });
+      localStorage.setItem('bookmarks', JSON.stringify(bookmarks));
+      displayBookmarks();
+    }
+
+    function displayBookmarks() {
+      const bookmarkList = document.getElementById('bookmarkList');
+      const bookmarkItems = document.getElementById('bookmarkItems');
+      if (bookmarks.length === 0) {
+        bookmarkList.classList.add('hidden');
+        return;
+      }
+      bookmarkList.classList.remove('hidden');
+      bookmarkItems.innerHTML = '';
+      bookmarks.forEach((bm, index) => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          ${bm.chapterTitle} (<a href="#" class="text-blue-400" onclick="loadBookmark('${bm.mangaId}', '${bm.chapterId}')">Read</a>)
+          <button class="text-red-400 ml-2" onclick="deleteBookmark(${index})">Delete</button>
+        `;
+        bookmarkItems.appendChild(li);
+      });
+    }
+
+    function loadBookmark(mangaId, chapterId) {
+      const reader = document.getElementById('readerView');
+      document.getElementById('readerChapterSelect').value = chapterId;
+      loadChapter(chapterId);
+      reader.dataset.current = document.getElementById('readerChapterSelect').selectedIndex;
+      reader.classList.remove('hidden');
+      openManga(mangaId);
+    }
+
+    function deleteBookmark(index) {
+      bookmarks.splice(index, 1);
+      localStorage.setItem('bookmarks', JSON.stringify(bookmarks));
+      displayBookmarks();
+    }
+
+    // Debounce Utility for Search
+    function debounce(func, delay) {
+      let timeout;
+      return function (...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), delay);
+      };
+    }
+  </script>
+</body>
+</html>
